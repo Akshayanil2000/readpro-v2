@@ -228,6 +228,21 @@ const submitSessionResults = async (req, res) => {
             );
         }
 
+        // 5. Calculate real improvement vs previous sessions
+        const { rows: prevSessions } = await db.query(
+            `SELECT wpm, accuracy FROM "LearningSession" 
+             WHERE "userId" = $1 AND "skillFocus" = $2 AND accuracy IS NOT NULL AND id != $3
+             ORDER BY "createdAt" DESC LIMIT 5`,
+            [userId, session.skillFocus, sessionId]
+        );
+
+        let improvementText = 'First session!';
+        if (prevSessions.length > 0) {
+            const prevAvgWpm = prevSessions.reduce((s, r) => s + r.wpm, 0) / prevSessions.length;
+            const wpmDiff = Math.round(((wpm - prevAvgWpm) / (prevAvgWpm || 1)) * 100);
+            improvementText = `${wpmDiff >= 0 ? '+' : ''}${wpmDiff}% speed vs your average`;
+        }
+
         res.json({
             message: 'Session completed',
             wpm: Math.round(wpm),
@@ -235,7 +250,7 @@ const submitSessionResults = async (req, res) => {
             skillFocus: session.skillFocus,
             correctCount,
             totalQuestions: correctAnswers.length,
-            improvement: '+3.2%',
+            improvement: improvementText,
             feedback: [
                 { 
                     type: accuracy > 70 ? 'success' : 'warning', 
@@ -261,36 +276,76 @@ const getInsights = async (req, res) => {
     try {
         const userId = req.user.id;
 
-        // 1. Fetch Skill Progress with history
+        // 1. Fetch current skills
         const { rows: skillRows } = await db.query(
             'SELECT speed, comprehension, vocabulary, inference FROM "UserSkill" WHERE "userId" = $1',
             [userId]
         );
 
-        // 2. Fetch last 10 sessions for charts
+        // 2. Fetch last 20 sessions for charts + trend calculations
         const { rows: sessionHistory } = await db.query(
             `SELECT wpm, accuracy, "skillFocus", "createdAt" 
              FROM "LearningSession" 
              WHERE "userId" = $1 AND accuracy IS NOT NULL
-             ORDER BY "createdAt" DESC LIMIT 10`,
+             ORDER BY "createdAt" DESC LIMIT 20`,
             [userId]
         );
 
-        // 3. Simple Weekly Summary logic
+        const chronological = [...sessionHistory].reverse(); // oldest first for charts
+
+        // 3. Calculate real WPM and accuracy trends (first half vs second half of history)
+        let wpmTrend = 0;
+        let accTrend = 0;
+        if (chronological.length >= 2) {
+            const midpoint = Math.floor(chronological.length / 2);
+            const firstHalf = chronological.slice(0, midpoint);
+            const secondHalf = chronological.slice(midpoint);
+            const avgWpm1 = firstHalf.reduce((s, r) => s + r.wpm, 0) / firstHalf.length;
+            const avgWpm2 = secondHalf.reduce((s, r) => s + r.wpm, 0) / secondHalf.length;
+            const avgAcc1 = firstHalf.reduce((s, r) => s + r.accuracy, 0) / firstHalf.length;
+            const avgAcc2 = secondHalf.reduce((s, r) => s + r.accuracy, 0) / secondHalf.length;
+            wpmTrend = avgWpm1 > 0 ? Math.round(((avgWpm2 - avgWpm1) / avgWpm1) * 100) : 0;
+            accTrend = avgAcc1 > 0 ? Math.round(((avgAcc2 - avgAcc1) / avgAcc1) * 100) : 0;
+        }
+
+        // 4. Weekly summary: sessions this week vs last week
         const oneWeekAgo = new Date();
         oneWeekAgo.setDate(oneWeekAgo.getDate() - 7);
-        const { rows: lastWeekCount } = await db.query(
-            'SELECT COUNT(*) FROM "LearningSession" WHERE "userId" = $1 AND "createdAt" > $2',
+        const twoWeeksAgo = new Date();
+        twoWeeksAgo.setDate(twoWeeksAgo.getDate() - 14);
+
+        const { rows: thisWeekRows } = await db.query(
+            'SELECT COUNT(*) FROM "LearningSession" WHERE "userId" = $1 AND "createdAt" > $2 AND accuracy IS NOT NULL',
             [userId, oneWeekAgo]
         );
+        const { rows: lastWeekRows } = await db.query(
+            'SELECT COUNT(*) FROM "LearningSession" WHERE "userId" = $1 AND "createdAt" > $2 AND "createdAt" <= $3 AND accuracy IS NOT NULL',
+            [userId, twoWeeksAgo, oneWeekAgo]
+        );
+
+        const thisWeekSessions = parseInt(thisWeekRows[0].count);
+        const lastWeekSessions = parseInt(lastWeekRows[0].count);
+        let weeklyImprovement = '+0%';
+        if (lastWeekSessions > 0) {
+            const diff = Math.round(((thisWeekSessions - lastWeekSessions) / lastWeekSessions) * 100);
+            weeklyImprovement = `${diff >= 0 ? '+' : ''}${diff}%`;
+        } else if (thisWeekSessions > 0) {
+            weeklyImprovement = '+100%';
+        }
+
+        // 5. Find weak area from skills
+        const skills = skillRows[0] || { speed: 0, comprehension: 0, vocabulary: 0, inference: 0 };
+        const weakArea = Object.entries(skills).sort((a, b) => a[1] - b[1])[0]?.[0] || 'comprehension';
 
         res.json({
-            skills: skillRows[0] || { speed: 0, comprehension: 0, vocabulary: 0, inference: 0 },
-            history: sessionHistory.reverse(), // For chronological charts
+            skills,
+            history: chronological,
+            wpmTrend,
+            accTrend,
             weeklySummary: {
-                sessionsCompleted: parseInt(lastWeekCount[0].count),
-                improvement: '+12%', // Mock calculation for now
-                focusArea: 'Inference'
+                sessionsCompleted: thisWeekSessions,
+                improvement: weeklyImprovement,
+                focusArea: weakArea.charAt(0).toUpperCase() + weakArea.slice(1)
             }
         });
     } catch (error) {
