@@ -1,0 +1,37 @@
+{
+  "expo": {
+    "name": "ReadPro",
+    "slug": "readpro-v2",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "icon": "./assets/icon.png",
+    "userInterfaceStyle": "light",
+    "splash": {
+      "image": "./assets/splash-icon.png",
+      "resizeMode": "contain",
+      "backgroundColor": "#102216"
+    },
+    "ios": {
+      "supportsTablet": true,
+      "bundleIdentifier": "com.akshayanil2000.readpro"
+    },
+    "android": {
+      "adaptiveIcon": {
+        "backgroundColor": "#102216",
+        "foregroundImage": "./assets/android-icon-foreground.png"
+      },
+      "package": "com.akshayanil2000.readpro"
+    },
+    "web": {
+      "favicon": "./assets/favicon.png"
+    },
+    "plugins": [
+      "expo-font"
+    ],
+    "extra": {
+      "eas": {
+        "projectId": "bb785593-2e71-43a6-af06-fac5aef5fba3"
+      }
+    }
+  }
+}
