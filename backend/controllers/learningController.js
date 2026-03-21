@@ -1,5 +1,6 @@
 const db = require('../config/db');
 const crypto = require('crypto');
+const { generateAIPassage } = require('../services/aiService');
 const { getRecommendation } = require('../services/recommendationEngine');
 const { updateSkills } = require('../services/skillEngine');
 const { calculateStreak, calculateWeeklyProgress } = require('../utils/statCalculators');
@@ -115,7 +116,6 @@ const startSession = async (req, res) => {
             // Fallback: AI Generation to make it "Never Ending"
             try {
                 console.log(`[CONTENT POOL] No new modules. Invoking AI for ${skillFocus}/${difficulty}`);
-                const { generateAIPassage } = require('../services/aiService');
                 const aiAssessment = await generateAIPassage(skillFocus, difficulty, interest);
                 
                 content = {
@@ -228,7 +228,7 @@ const submitSessionResults = async (req, res) => {
             );
         }
 
-        // 5. Calculate real improvement vs previous sessions
+        // 6. Calculate improvement vs previous sessions
         const { rows: prevSessions } = await db.query(
             `SELECT wpm, accuracy FROM "LearningSession" 
              WHERE "userId" = $1 AND "skillFocus" = $2 AND accuracy IS NOT NULL AND id != $3

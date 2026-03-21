@@ -30,11 +30,6 @@ const registerUser = async (req, res) => {
         );
         const user = createResult.rows[0];
 
-        const { rows: assessment } = await db.query(
-            'SELECT id FROM "Assessment" WHERE "userId" = $1 LIMIT 1',
-            [user.id]
-        );
-
         res.status(201).json({
             id: user.id,
             name: user.name,

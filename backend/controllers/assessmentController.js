@@ -1,6 +1,7 @@
 const db = require('../config/db');
 const crypto = require('crypto');
 const { generateAIPassage } = require('../services/aiService');
+const { updateSkills } = require('../services/skillEngine');
 
 const generateDynamicAssessment = async (category, level) => {
     const difficulty =
@@ -106,18 +107,14 @@ const submitAssessment = async (req, res) => {
             [levelAssigned, wpm, accuracy, userId]
         );
 
-        // --- UNIFIED SKILL UPDATE (New) ---
-        // Initialize/Update all 4 skills at once to ensure dashboard consistency
-        const { updateSkills } = require('../services/skillEngine');
+        // Update all 4 skills at once for dashboard consistency
         const normalizedSpeed = Math.min(100, (wpm / 250) * 100);
-        
         await updateSkills(userId, [
             { skill: 'speed', score: normalizedSpeed },
             { skill: 'comprehension', score: accuracy },
             { skill: 'vocabulary', score: accuracy },
             { skill: 'inference', score: accuracy }
         ]);
-        // ---------------------------------
 
         await db.query('DELETE FROM "DynamicAssessmentSession" WHERE "userId" = $1', [userId]);
 
